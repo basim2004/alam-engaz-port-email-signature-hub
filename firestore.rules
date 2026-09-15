@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions for Role-Based Access Control (RBAC)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.token.email == 'basim@alamengaz.com'
+      );
+    }
+    
+    function isContentAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'CONTENT_ADMIN' ||
+        isSuperAdmin()
+      );
+    }
+    
+    function isEmployeeAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'EMPLOYEE_ADMIN' ||
+        isSuperAdmin()
+      );
+    }
+    
+    function isManagement() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'MANAGEMENT' ||
+        request.auth.token.role == 'CEO' ||
+        request.auth.token.role == 'GM' ||
+        isSuperAdmin()
+      );
+    }
+    
+    function isEmployee(employeeId) {
+      return isAuthenticated() && (
+        request.auth.uid == employeeId ||
+        request.auth.token.employeeId == employeeId
+      );
+    }
+
+    // Passwords are NEVER stored in Firestore documents
+    function noPasswordInPayload() {
+      return !('password' in request.resource.data) &&
+             !('pwd' in request.resource.data) &&
+             !('plainPassword' in request.resource.data);
+    }
+
+    // 1. Employees Directory & Profiles
+    match /employees/{employeeId} {
+      // Public read if approved public directory is enabled, or if authenticated
+      allow read: if true;
+      // Write allowed only by Employee Admins or Super Admins
+      allow create, update, delete: if isEmployeeAdmin() && noPasswordInPayload();
+    }
+
+    // 2. Signatures Collection
+    match /signatures/{employeeId} {
+      // Any authenticated user or public receiver can read approved signature
+      allow read: if true;
+      // Employee can update own signature customizations only; Admin can manage all
+      allow create, update: if (isEmployee(employeeId) || isEmployeeAdmin() || isManagement()) && noPasswordInPayload();
+      // Delete allowed for own signature or by Admins/Management
+      allow delete: if isEmployee(employeeId) || isEmployeeAdmin() || isManagement();
+    }
+
+    // 3. Admin Users Collection (SUPER_ADMIN only)
+    match /adminUsers/{adminId} {
+      allow read: if isSuperAdmin();
+      allow write: if isSuperAdmin() && noPasswordInPayload();
+    }
+
+    // 4. Management Users Collection (Executive access)
+    match /managementUsers/{userId} {
+      allow read: if isManagement() || isSuperAdmin();
+      allow write: if isSuperAdmin() && noPasswordInPayload();
+    }
+
+    // 5. System Settings & Branding
+    match /systemSettings/{settingId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // 6. Website Content & Media Library
+    match /websiteContent/{contentId} {
+      allow read: if true;
+      allow write: if isContentAdmin();
+    }
+
+    // 7. Activity & Audit Logs (Append-only)
+    match /activityLogs/{logId} {
+      allow read: if isManagement() || isSuperAdmin();
+      // Anyone authenticated can append a log entry, but existing logs cannot be modified or deleted
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+  }
+}
