@@ -3228,11 +3228,11 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
                 </span>
               </div>
 
-              {/* Temporary Password with Generate Button */}
+              {/* Password with Generate Button */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontSize: '12px', fontWeight: 700, color: '#0F172A' }}>
-                    Temporary Password *
+                    Login Password *
                   </label>
                   <button
                     type="button"
@@ -3331,7 +3331,7 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
       )}
 
       {/* =======================================================
-          2. MODAL: TEMPORARY PASSWORD & WHATSAPP (Requirement #2, #3, #7)
+          2. MODAL: CREDENTIALS & WHATSAPP (Requirement #2, #3, #7)
           ======================================================= */}
       {tempPassModalData?.isOpen && (
         <div className="support-modal-backdrop" onClick={() => setTempPassModalData(null)}>
@@ -3344,7 +3344,7 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
             </div>
 
             <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy-primary)', margin: '0 0 4px' }}>
-              {tempPassModalData.isNewCreation ? 'Account Created Successfully' : 'NEW TEMPORARY PASSWORD'}
+              {tempPassModalData.isNewCreation ? 'Account Created Successfully' : 'LOGIN CREDENTIALS'}
             </h3>
             <p style={{ fontSize: '13px', color: '#64748B', margin: '0 0 18px' }}>
               Credentials issued for <strong>{tempPassModalData.employee.name}</strong> ({tempPassModalData.employee.id})
@@ -3353,15 +3353,15 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
             {/* Password Box */}
             <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-                Temporary Access Password
+                Access Password
               </div>
               <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--navy-primary)', fontFamily: 'monospace', letterSpacing: '0.08em' }}>
                 {tempPassModalData.tempPassword}
               </div>
             </div>
 
-            <p style={{ fontSize: '12px', color: '#64748B', lineHeight: 1.4, margin: '0 0 20px' }}>
-              ⚠️ For security, this temporary password will not be shown again. The employee is required to change their password on first login.
+            <p style={{ fontSize: '12px', color: '#059669', fontWeight: 600, lineHeight: 1.4, margin: '0 0 20px' }}>
+              ✓ Credentials are active immediately. The employee can directly log in with this password.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -3452,10 +3452,10 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
               Send Login Details via WhatsApp
             </h3>
             <p style={{ fontSize: '13.5px', color: '#475569', lineHeight: 1.5, marginBottom: '20px' }}>
-              Generate a new temporary password before sending login credentials to <strong>{showConfirmWhatsAppModal.employee.name}</strong>?
+              Generate a new login password before sending credentials to <strong>{showConfirmWhatsAppModal.employee.name}</strong>?
             </p>
             <p style={{ fontSize: '12px', color: '#64748B', lineHeight: 1.4, marginBottom: '24px', backgroundColor: '#F8FAFC', padding: '10px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-              For security, previously configured passwords cannot be displayed in plaintext. Generating a new temporary password ensures safe delivery to the employee.
+              For security, previously configured passwords cannot be displayed in plaintext. Generating a new password ensures safe delivery to the employee.
             </p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
               <button

@@ -2754,7 +2754,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   ADMIN SECURITY DIALOG
                 </span>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy-primary)', margin: '2px 0 0' }}>
-                  NEW TEMPORARY PASSWORD
+                  EMPLOYEE LOGIN CREDENTIALS
                 </h3>
               </div>
               <button onClick={() => setTempPasswordModalData(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94A3B8' }}>&times;</button>
@@ -2762,10 +2762,10 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
 
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '16px' }}>
-                Temporary password for <strong>{tempPasswordModalData.emp.name}</strong> (Username: <code>{tempPasswordModalData.emp.username || tempPasswordModalData.emp.id}</code>).
+                Access credentials for <strong>{tempPasswordModalData.emp.name}</strong> (Username: <code>{tempPasswordModalData.emp.username || tempPasswordModalData.emp.id}</code>).
                 <br />
-                <span style={{ color: '#DC2626', fontWeight: 600, fontSize: '11.5px' }}>
-                  ⚠️ This password will NOT be visible again after closing this dialog.
+                <span style={{ color: '#64748B', fontSize: '11.5px' }}>
+                  Provide these credentials to the employee for direct portal access.
                 </span>
               </p>
 
@@ -2777,7 +2777,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                 marginBottom: '16px'
               }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  TEMPORARY PASSWORD
+                  ACCESS PASSWORD
                 </div>
                 <div style={{
                   fontSize: '24px',
@@ -2790,7 +2790,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
                   {tempPasswordModalData.tempPass}
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#059669', fontWeight: 600 }}>
-                  ✓ First-login password change enabled
+                  ✓ Login password active immediately
                 </div>
               </div>
 
@@ -2902,7 +2902,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({
               color: '#1E40AF',
               marginBottom: '18px'
             }}>
-              <strong>Generate a new temporary password before sending login credentials?</strong>
+                <strong>Generate a new login password before sending credentials?</strong>
               <div style={{ fontSize: '11.5px', color: '#3B82F6', marginTop: '4px' }}>
                 Target: {showConfirmResetBeforeWhatsApp.name} ({showConfirmResetBeforeWhatsApp.whatsappNumber || showConfirmResetBeforeWhatsApp.phone || 'No number'})
               </div>

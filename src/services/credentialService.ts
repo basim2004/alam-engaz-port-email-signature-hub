@@ -3,7 +3,8 @@ import {
   getFirestoreEmployees,
   saveFirestoreEmployee,
   getFirestoreUserAccounts,
-  saveFirestoreUserAccounts
+  saveFirestoreUserAccounts,
+  provisionFirebaseAuthUser
 } from './firebaseService';
 import { logAuditEvent } from './websiteContentService';
 
@@ -150,6 +151,16 @@ export async function createEmployeeCredentials(params: {
   }
   employee.updatedAt = now;
 
+  // Provision user in Firebase Authentication
+  try {
+    const authUid = await provisionFirebaseAuthUser(employee.email, params.tempPassword);
+    if (authUid) {
+      employee.uid = authUid;
+    }
+  } catch (authErr) {
+    console.warn('Firebase Auth provisioning notice:', authErr);
+  }
+
   await saveFirestoreEmployee(employee);
 
   // Sync to UserAccounts collection
@@ -225,6 +236,16 @@ export async function resetEmployeeCredentials(params: {
   employee.mustChangePassword = false;
   employee.passwordChangeRequired = false;
   employee.updatedAt = now;
+
+  // Provision / Update user in Firebase Authentication
+  try {
+    const authUid = await provisionFirebaseAuthUser(employee.email, tempPass);
+    if (authUid) {
+      employee.uid = authUid;
+    }
+  } catch (authErr) {
+    console.warn('Firebase Auth provisioning notice:', authErr);
+  }
 
   await saveFirestoreEmployee(employee);
 

@@ -1156,17 +1156,17 @@ export const AdminUsersModule: React.FC<AdminUsersModuleProps> = ({
                   CREDENTIALS GENERATED
                 </span>
                 <h3 className="ss-modal-title" style={{ marginTop: '2px' }}>
-                  NEW TEMPORARY PASSWORD
+                  EMPLOYEE LOGIN CREDENTIALS
                 </h3>
               </div>
               <button className="ss-modal-close" onClick={() => setActiveModal('none')}>&times;</button>
             </div>
             <div className="ss-modal-body" style={{ textAlign: 'center', padding: '24px 20px' }}>
               <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '16px' }}>
-                Temporary password for <strong>{tempPasswordTarget.name}</strong> (Username: <code>{tempPasswordTarget.username}</code>).
+                Login password for <strong>{tempPasswordTarget.name}</strong> (Username: <code>{tempPasswordTarget.username}</code>).
                 <br />
-                <span style={{ color: '#DC2626', fontWeight: 600, fontSize: '11.5px' }}>
-                  ⚠️ This password will NOT be visible again after closing this dialog.
+                <span style={{ color: '#64748B', fontSize: '11.5px' }}>
+                  Provide these credentials to the employee for direct portal access.
                 </span>
               </p>
 
@@ -1178,7 +1178,7 @@ export const AdminUsersModule: React.FC<AdminUsersModuleProps> = ({
                 marginBottom: '16px'
               }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  TEMPORARY PASSWORD
+                  LOGIN PASSWORD
                 </div>
                 <div style={{
                   fontSize: '24px',
@@ -1191,7 +1191,7 @@ export const AdminUsersModule: React.FC<AdminUsersModuleProps> = ({
                   {tempPasswordResult}
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#059669', fontWeight: 600 }}>
-                  ✓ First-login password change enabled
+                  ✓ Login password active immediately
                 </div>
               </div>
 
@@ -1291,7 +1291,7 @@ export const AdminUsersModule: React.FC<AdminUsersModuleProps> = ({
                 color: '#1E40AF',
                 marginBottom: '16px'
               }}>
-                <strong>Generate a new temporary password before sending login credentials?</strong>
+                <strong>Generate a new login password before sending credentials?</strong>
                 <div style={{ fontSize: '11.5px', color: '#3B82F6', marginTop: '4px' }}>
                   Target WhatsApp: {selectedEmployee.whatsappNumber || selectedEmployee.phone || 'Not available'}
                 </div>

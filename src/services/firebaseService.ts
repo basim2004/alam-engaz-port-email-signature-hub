@@ -12,7 +12,9 @@ import {
   onSnapshot,
   addDoc
 } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { db, firebaseConfig } from './firebaseConfig';
+import { initializeApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { Employee, ManagementUser, UserAccount, SignatureConfigRecord, ActivityLog } from '../types';
 import { INITIAL_EMPLOYEES, INITIAL_MANAGEMENT_USERS, INITIAL_ACTIVITY_LOGS, COMPANY_DETAILS } from '../data/initialData';
 
@@ -575,4 +577,20 @@ export async function removeEmployeeProfilePhoto(employeeId: string): Promise<{ 
     await saveFirestoreEmployee(emp);
   }
   return { success: true, message: '✓ Employee photo removed. Initial avatar restored.' };
+}
+
+/**
+ * Provisions a Firebase Auth user in the background for an employee.
+ */
+export async function provisionFirebaseAuthUser(email: string, password: string): Promise<string | null> {
+  try {
+    if (!email || !password || password.length < 6) return null;
+    const secondaryApp = initializeApp(firebaseConfig, 'SecondaryAuth_' + Date.now() + '_' + Math.random());
+    const secondaryAuth = getAuth(secondaryApp);
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    return cred.user.uid;
+  } catch (err) {
+    // If account already exists in Firebase Auth or creation failed, returns null gracefully
+    return null;
+  }
 }
