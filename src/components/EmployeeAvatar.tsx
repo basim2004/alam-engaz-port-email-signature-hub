@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface EmployeeAvatarProps {
   name: string;
@@ -17,16 +17,18 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = ({
   className = '',
   style = {}
 }) => {
+  const [imageError, setImageError] = useState(false);
   const effectivePhoto = photoUrl || avatarUrl;
 
   const getInitials = (fullName: string): string => {
     if (!fullName) return 'AE';
-    const parts = fullName.trim().split(/\s+/);
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'AE';
     if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  if (effectivePhoto && !effectivePhoto.includes('logo.png')) {
+  if (effectivePhoto && !imageError && !effectivePhoto.includes('logo.png')) {
     return (
       <div 
         className={`employee-avatar-wrap ${className}`}
@@ -53,16 +55,13 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = ({
             objectFit: 'cover',
             display: 'block'
           }}
-          onError={(e) => {
-            // If image fails to load, fallback to initials badge
-            (e.target as HTMLElement).style.display = 'none';
-          }}
+          onError={() => setImageError(true)}
         />
       </div>
     );
   }
 
-  // Clean initials fallback (Requirement #7: clean initials avatar fallback, no fake faces)
+  // Clean initials fallback (clean initials avatar, no generic/fake faces)
   const initials = getInitials(name);
   return (
     <div 

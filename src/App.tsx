@@ -21,6 +21,7 @@ import {
   canAccessManagement, 
   canAccessEmployee 
 } from './services/authService';
+import { auth } from './services/firebaseConfig';
 import { deleteSignatureRecord } from './services/signatureStorageService';
 import { 
   getFirestoreEmployees, 
@@ -47,12 +48,20 @@ export const App: React.FC = () => {
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(() => {
     const session = getStoredAuthSession();
     const emps = getFirestoreEmployees();
-    if (session && session.employeeId) {
-      return emps.find(e => e.id.toLowerCase() === session.employeeId?.toLowerCase()) || 
-             INITIAL_EMPLOYEES.find(e => e.id.toLowerCase() === session.employeeId?.toLowerCase()) || null;
+    if (session && session.role === 'employee') {
+      const match = emps.find(e => 
+        (session.employeeId && e.id.toLowerCase() === session.employeeId.toLowerCase()) ||
+        (session.uid && e.uid === session.uid) ||
+        (session.email && e.email.toLowerCase() === session.email.toLowerCase())
+      ) || INITIAL_EMPLOYEES.find(e => 
+        (session.employeeId && e.id.toLowerCase() === session.employeeId.toLowerCase()) ||
+        (session.email && e.email.toLowerCase() === session.email.toLowerCase())
+      );
+      return match || null;
     }
     return null;
   });
+
   const [managementUsers, setManagementUsers] = useState<ManagementUser[]>(INITIAL_MANAGEMENT_USERS);
   const [currentMgmtUser, setCurrentMgmtUser] = useState<ManagementUser>(INITIAL_MANAGEMENT_USERS[0]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => getFirestoreActivityLogs());
@@ -84,9 +93,16 @@ export const App: React.FC = () => {
   // Keep currentEmployee in sync with session & live Firestore employees list
   useEffect(() => {
     const session = getStoredAuthSession();
-    if (session && session.employeeId && employees.length > 0) {
-      const match = employees.find(e => e.id.toLowerCase() === session.employeeId?.toLowerCase()) ||
-                    INITIAL_EMPLOYEES.find(e => e.id.toLowerCase() === session.employeeId?.toLowerCase());
+    if (session && session.role === 'employee' && employees.length > 0) {
+      const match = employees.find(e => 
+        (session.employeeId && e.id.toLowerCase() === session.employeeId.toLowerCase()) ||
+        (session.uid && e.uid === session.uid) ||
+        (session.email && e.email.toLowerCase() === session.email.toLowerCase()) ||
+        (session.employeeId && e.username && e.username.toLowerCase() === session.employeeId.toLowerCase())
+      ) || INITIAL_EMPLOYEES.find(e => 
+        (session.employeeId && e.id.toLowerCase() === session.employeeId.toLowerCase()) ||
+        (session.email && e.email.toLowerCase() === session.email.toLowerCase())
+      );
       if (match) {
         setCurrentEmployee(match);
       }
@@ -104,7 +120,6 @@ export const App: React.FC = () => {
       // 1. Internal Protected Route: /admin and subpaths
       if (path === '/admin' || path === 'admin' || path.startsWith('/admin') || path.startsWith('admin/')) {
         if (!canAccessAdmin(session)) {
-          // Deny access and trigger Admin Authentication
           setLoginModal({ isOpen: true, portal: 'admin', targetRoute: path.includes('studio') ? 'admin-signatures-studio' : 'admin-panel' });
           setCurrentRoute('home');
           window.history.replaceState(null, '', '/');
@@ -248,8 +263,8 @@ export const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleOpenLoginModal = (portal?: 'employee' | 'management' | 'admin') => {
-    setLoginModal({ isOpen: true, portal: portal || 'employee' });
+  const handleOpenLoginModal = () => {
+    setLoginModal({ isOpen: true, portal: 'employee' });
   };
 
   const handleLoginSuccess = (role: UserRole, targetRoute: PageRoute, mgmtUser?: ManagementUser, employee?: Employee) => {
@@ -259,21 +274,26 @@ export const App: React.FC = () => {
       setCurrentEmployee(employee);
     } else if (role === 'employee') {
       const session = getStoredAuthSession();
-      const match = employees.find(e => e.id.toLowerCase() === (session?.employeeId || '').toLowerCase());
+      const match = employees.find(e => 
+        (session?.employeeId && e.id.toLowerCase() === session.employeeId.toLowerCase()) ||
+        (session?.uid && e.uid === session.uid) ||
+        (session?.email && e.email.toLowerCase() === session.email.toLowerCase())
+      ) || INITIAL_EMPLOYEES[0];
       if (match) setCurrentEmployee(match);
     }
     setLoginModal({ isOpen: false, portal: 'employee' });
 
     // Store secure session
     setStoredAuthSession({
-      uid: role === 'admin' ? 'adm-root' : role === 'management' ? (mgmtUser?.id || 'mgmt-01') : (employee?.id || 'emp-user'),
+      uid: role === 'admin' ? 'adm-root' : role === 'management' ? (mgmtUser?.id || 'mgmt-01') : (employee?.uid || employee?.id || 'emp-user'),
       role,
       email: role === 'admin' ? 'basim@alamengaz.com' : role === 'management' ? (mgmtUser?.email || 'ceo@alamengaz.com') : (employee?.email || 'employee@alamengaz.com'),
       displayName: role === 'admin' ? 'Basim Aslam' : role === 'management' ? (mgmtUser?.name || 'Executive') : (employee?.name || 'Employee'),
       adminTier: role === 'admin' ? 'SUPER_ADMIN' : undefined,
       managementRole: role === 'management' ? (mgmtUser?.role === 'General Manager' ? 'GM' : 'CEO') : undefined,
-      employeeId: role === 'employee' ? employee?.id : undefined,
-      tokenExpiry: Date.now() + 24 * 60 * 60 * 1000 // 24-hour token
+      employeeId: role === 'employee' ? (employee?.id || employee?.username) : undefined,
+      mustChangePassword: false,
+      tokenExpiry: Date.now() + 24 * 60 * 60 * 1000
     });
 
     handleNavigate(targetRoute);
@@ -288,8 +308,15 @@ export const App: React.FC = () => {
     setActivityLogs([newLog, ...activityLogs]);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearAuthSession();
+    try {
+      if (auth.currentUser) {
+        await auth.signOut();
+      }
+    } catch (e) {
+      console.warn('Firebase signout error:', e);
+    }
     setUserRole('guest');
     setCurrentEmployee(null);
     handleNavigate('home');
@@ -298,69 +325,87 @@ export const App: React.FC = () => {
   const handleAddEmployee = async (newEmp: Employee) => {
     await saveFirestoreEmployee(newEmp);
     const newLog: ActivityLog = {
-      id: `LOG-00${Date.now().toString().slice(-4)}`,
-      user: 'Administrator',
-      action: 'New Employee Enrolled',
+      id: `LOG-00${activityLogs.length + 1}`,
+      user: 'Admin',
+      action: 'Employee Added',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      details: `Added ${newEmp.name} (${newEmp.jobTitle}, ${newEmp.id}) to company registry.`
+      details: `Added ${newEmp.name} to the corporate directory.`
     };
     await saveFirestoreActivityLog(newLog);
   };
 
   const handleUpdateEmployee = async (updatedEmp: Employee) => {
     await saveFirestoreEmployee(updatedEmp);
-  };
-
-  const handleDeleteEmployee = async (empId: string) => {
-    const target = employees.find(e => e.id === empId);
-    await deleteFirestoreEmployee(empId);
-    await deleteSignatureRecord(empId, target?.name || empId, 'Root Admin', 'SUPER_ADMIN');
-
+    if (currentEmployee && currentEmployee.id === updatedEmp.id) {
+      setCurrentEmployee(updatedEmp);
+    }
     const newLog: ActivityLog = {
-      id: `LOG-00${Date.now().toString().slice(-4)}`,
-      user: 'Administrator',
-      action: 'Employee Purged',
+      id: `LOG-00${activityLogs.length + 1}`,
+      user: 'Admin',
+      action: 'Employee Updated',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      details: `Deleted employee record and signature customization for ${target?.name || empId}.`
+      details: `Updated details for ${updatedEmp.name}.`
     };
     await saveFirestoreActivityLog(newLog);
   };
 
-  const handleDeleteSignature = async (empId: string, performedBy: string = 'Administrator', role: string = 'SUPER_ADMIN') => {
-    const target = employees.find(e => e.id === empId);
-    return await deleteSignatureRecord(empId, target?.name || empId, performedBy, role);
+  const handleDeleteEmployee = async (empId: string) => {
+    await deleteFirestoreEmployee(empId);
+    const newLog: ActivityLog = {
+      id: `LOG-00${activityLogs.length + 1}`,
+      user: 'Admin',
+      action: 'Employee Removed',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      details: `Removed employee ${empId} from database.`
+    };
+    await saveFirestoreActivityLog(newLog);
   };
 
-  const handleUpdateManagementUsers = (newUsers: ManagementUser[]) => {
-    setManagementUsers(newUsers);
+  const handleDeleteSignature = async (empId: string, performedBy?: string, role?: string) => {
+    await deleteSignatureRecord(empId, performedBy || 'User', performedBy || 'User', (role as any) || 'admin', empId);
+    const newLog: ActivityLog = {
+      id: `LOG-00${activityLogs.length + 1}`,
+      user: performedBy || 'User',
+      action: 'Signature Deleted / Reset',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      details: `Custom signature for employee ${empId} was deleted and reset to master default.`
+    };
+    await saveFirestoreActivityLog(newLog);
+  };
+
+  const handleUpdateManagementUsers = (updatedUsers: ManagementUser[]) => {
+    setManagementUsers(updatedUsers);
   };
 
   const isInternalPortal = 
-    currentRoute === 'admin-panel' || 
-    currentRoute === 'admin-signatures-studio' ||
+    currentRoute === 'employee-portal' || 
+    currentRoute === 'employee-signature-studio' ||
     currentRoute === 'management-portal' || 
     currentRoute === 'management-signatures' ||
-    currentRoute === 'employee-portal' ||
-    currentRoute === 'employee-signature-studio';
+    currentRoute === 'admin-panel' || 
+    currentRoute === 'admin-signatures-studio';
+
+  // Resolved active employee for Employee Portal
+  const activeEmployee = currentEmployee || (employees.length > 0 ? employees[0] : INITIAL_EMPLOYEES[0]);
 
   return (
-    <div className="page-wrapper">
-      {/* Site Header — visible only on public pages */}
-      {!isInternalPortal && (
-        <Header 
-          currentRoute={currentRoute}
-          onNavigate={handleNavigate}
-          onOpenLoginModal={handleOpenLoginModal}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
-      )}
+    <div className="app-container">
+      {/* Site Header — visible on all pages */}
+      <Header 
+        currentRoute={currentRoute} 
+        onNavigate={handleNavigate}
+        userRole={userRole}
+        onOpenLoginModal={handleOpenLoginModal}
+        onLogout={handleLogout}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
-      {/* Main View Router */}
-      <main className={`main-content-wrap ${isInternalPortal ? 'admin-main-wrap' : ''}`}>
+      {/* Main Routed Content */}
+      <main className="main-content">
         {currentRoute === 'home' && (
           <HomeView 
-            onNavigate={handleNavigate}
+            onNavigate={handleNavigate} 
             onOpenLoginModal={handleOpenLoginModal}
           />
         )}
@@ -377,29 +422,32 @@ export const App: React.FC = () => {
 
         {currentRoute === 'signature-studio' && (
           <SignatureStudioView 
-            currentEmployee={currentEmployee || employees[0]}
+            currentEmployee={activeEmployee}
             employees={employees}
           />
         )}
 
         {currentRoute === 'installation-guide' && (
-          <InstallationGuideView onNavigate={handleNavigate} />
+          <InstallationGuideView 
+            onNavigate={handleNavigate}
+          />
         )}
 
         {currentRoute === 'about' && (
-          <AboutView onNavigate={handleNavigate} />
+          <AboutView 
+            onNavigate={handleNavigate}
+          />
         )}
 
         {currentRoute === 'support' && (
           <SupportView 
-            searchQuery={searchQuery}
             onNavigate={handleNavigate}
           />
         )}
 
         {(currentRoute === 'employee-portal' || currentRoute === 'employee-signature-studio') && (
           <EmployeePortalView 
-            currentEmployee={currentEmployee || employees[0]}
+            currentEmployee={activeEmployee}
             initialTab={employeeInitialTab as any}
             onLogout={handleLogout}
             onNavigate={handleNavigate}
@@ -462,4 +510,3 @@ export const App: React.FC = () => {
     </div>
   );
 };
-

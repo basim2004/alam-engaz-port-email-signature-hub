@@ -17,6 +17,7 @@ import {
   saveSignatureRecord, 
   getCustomSignatureRecord 
 } from '../services/signatureStorageService';
+import { saveFirestoreEmployee } from '../services/firebaseService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EPTab =
@@ -235,7 +236,7 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
       <aside className={`ep-sidebar ${sidebarOpen ? 'ep-sidebar-open' : ''}`}>
         {/* Sidebar Brand */}
         <div className="ep-sidebar-brand">
-          <img src="/assets/logo.png" alt="ALAM ENGAZ" className="ep-sidebar-logo" />
+          <img src="/assets/logo.png" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }} alt="ALAM ENGAZ" className="ep-sidebar-logo" />
           <div className="ep-sidebar-brand-text">
             <span className="ep-brand-name">ALAM ENGAZ</span>
             <span className="ep-brand-portal">EMPLOYEE PORTAL</span>
@@ -284,7 +285,7 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
 
           {/* Logo */}
           <div className="ep-header-logo-wrap">
-            <img src="/assets/logo.png" alt="ALAM ENGAZ PORT SERVICES CO." className="ep-header-logo" />
+            <img src="/assets/logo.png" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }} alt="ALAM ENGAZ PORT SERVICES CO." className="ep-header-logo" />
           </div>
 
           {/* Center Tagline */}
@@ -465,8 +466,8 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                     <button className="ep-card-edit-link" onClick={() => { setActiveTab('my-profile'); setShowEditModal(true); }}>Edit</button>
                   </div>
                   <div className="ep-profile-mini">
-                    <div className="ep-profile-mini-avatar" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' }}>
-                      <img src="/assets/logo.png" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }} alt="ALAM ENGAZ" style={{ width: '26px', height: 'auto', objectFit: 'contain' }} />
+                    <div className="ep-profile-mini-avatar">
+                      <EmployeeAvatar name={currentEmployee.name} photoUrl={currentEmployee.photoUrl || currentEmployee.avatarUrl} size={46} />
                     </div>
                     <div className="ep-profile-mini-info">
                       <div className="ep-profile-mini-name">{currentEmployee.name.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</div>
@@ -722,7 +723,9 @@ export const EmployeePortalView: React.FC<EmployeePortalViewProps> = ({
                     </div>
                     <div className="ep-modal-footer">
                       <button className="ep-btn-action ep-btn-outline" onClick={() => setShowEditModal(false)}>Cancel</button>
-                      <button className="ep-btn-action ep-btn-red" onClick={() => {
+                      <button className="ep-btn-action ep-btn-red" onClick={async () => {
+                        const updated = { ...currentEmployee, phone: editPhone, updatedAt: new Date().toISOString() };
+                        await saveFirestoreEmployee(updated);
                         setEditSaved(true);
                         setTimeout(() => { setEditSaved(false); setShowEditModal(false); }, 1800);
                       }}>Save Changes</button>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PageRoute, UserRole, ManagementUser, Employee } from '../types';
-import { authenticateUser, sendFirebasePasswordReset, changeUserPassword } from '../services/authService';
+import { authenticateUser, sendFirebasePasswordReset } from '../services/authService';
 import { CENTRAL_ORIGINAL_LOGO, CENTRAL_ORIGINAL_LOGO_ALT } from '../constants/assets';
 
 interface LoginModalProps {
@@ -14,8 +14,6 @@ interface LoginModalProps {
 
 export const LoginModal: React.FC<LoginModalProps> = ({
   targetRoute,
-  employees = [],
-  managementUsers = [],
   onClose,
   onLoginSuccess
 }) => {
@@ -26,18 +24,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // First-time login password change state (Requirement #5)
-  const [isMandatoryPasswordChange, setIsMandatoryPasswordChange] = useState(false);
-  const [pendingAuthData, setPendingAuthData] = useState<{
-    role: UserRole;
-    targetRoute: PageRoute;
-    employee?: Employee;
-    mgmtUser?: ManagementUser;
-  } | null>(null);
-  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,9 +41,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       }
 
       const role = result.role || 'employee';
-      // Automatically detect the user's role from the authenticated account:
+      // Automatically detect the user's role and route to dashboard:
       // EMPLOYEE -> Employee Portal (/employee)
-      // MANAGEMENT / CEO / GENERAL MANAGER -> Management Portal (/management)
+      // MANAGEMENT -> Management Portal (/management)
       // SUPER ADMIN / ADMIN -> Admin Panel (/admin)
       const resolvedTarget = role === 'admin' 
         ? (targetRoute && (targetRoute === 'admin-panel' || targetRoute === 'admin-signatures-studio') ? targetRoute : 'admin-panel')
@@ -65,62 +51,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         ? (targetRoute && (targetRoute === 'management-portal' || targetRoute === 'management-signatures') ? targetRoute : 'management-portal')
         : (targetRoute && (targetRoute === 'employee-portal' || targetRoute === 'employee-signature-studio') ? targetRoute : 'employee-portal');
 
-      // Check if user requires mandatory first-time password change (Requirement #5)
-      if (result.mustChangePassword) {
-        setPendingAuthData({
-          role,
-          targetRoute: resolvedTarget,
-          employee: result.employee,
-          mgmtUser: result.mgmtUser
-        });
-        setCurrentPasswordInput(password);
-        setIsMandatoryPasswordChange(true);
-        setInfoMessage('Welcome to ALAM ENGAZ! Please change your temporary password after your first login.');
-        setIsSubmitting(false);
-        return;
-      }
-
+      // Direct entry to Employee Portal Dashboard — NO password change prompt
       onLoginSuccess(role, resolvedTarget, result.mgmtUser, result.employee);
     } catch (err: any) {
       setErrorMessage(err.message || 'Unexpected login error occurred.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleMandatoryPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setInfoMessage(null);
-
-    if (!currentPasswordInput) {
-      setErrorMessage('Please enter your current temporary password.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setErrorMessage('New password must be at least 6 characters long.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('New passwords do not match. Please verify.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const res = await changeUserPassword(identifier, currentPasswordInput, newPassword, confirmPassword, pendingAuthData?.role);
-      if (res.success) {
-        setInfoMessage('Password changed successfully.');
-        setTimeout(() => {
-          if (pendingAuthData) {
-            onLoginSuccess(pendingAuthData.role, pendingAuthData.targetRoute, pendingAuthData.mgmtUser, pendingAuthData.employee);
-          }
-        }, 900);
-      } else {
-        setErrorMessage(res.message);
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update password.');
     } finally {
       setIsSubmitting(false);
     }
@@ -186,18 +120,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <img 
             src={CENTRAL_ORIGINAL_LOGO} 
             alt={CENTRAL_ORIGINAL_LOGO_ALT} 
-            style={{ height: '38px', objectFit: 'contain', margin: '0 auto 12px' }} 
+            style={{ height: '38px', objectFit: 'contain', margin: '0 auto 12px', display: 'block' }} 
             onError={(e) => {
-              (e.target as HTMLImageElement).src = '/assets/logo.png';
+              (e.target as HTMLImageElement).src = '/logo.png';
             }}
           />
           <h2 style={{ fontSize: '21px', fontWeight: 800, color: 'var(--navy-primary)', letterSpacing: '-0.02em' }}>
-            {isMandatoryPasswordChange ? 'CHANGE YOUR PASSWORD' : 'Secure Corporate Login'}
+            Secure Corporate Login
           </h2>
           <p style={{ fontSize: '13px', color: '#64748B', marginTop: '4px', lineHeight: 1.4 }}>
-            {isMandatoryPasswordChange 
-              ? 'Please change your temporary password after your first login to secure your account.' 
-              : 'Enter your Employee ID, username, or corporate email.'}
+            Enter your Employee ID, username, or corporate email.
           </p>
         </div>
 
@@ -237,190 +169,118 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </div>
         )}
 
-        {/* Mandatory First-Time Password Change Form (Requirement #5) */}
-        {isMandatoryPasswordChange ? (
-          <form onSubmit={handleMandatoryPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                Current Password
-              </label>
-              <input 
-                type="password"
-                placeholder="Enter current temporary password"
-                value={currentPasswordInput}
-                onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                required
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                New Password
-              </label>
-              <input 
-                type="password"
-                placeholder="Enter at least 6 characters"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={6}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                Confirm New Password
-              </label>
-              <input 
-                type="password"
-                placeholder="Re-type new password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={6}
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-hero-primary"
+        {/* Standard Authentication Form */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+              Username / Employee ID / Email
+            </label>
+            <input 
+              type="text"
+              placeholder="e.g. AE-1037 or username or email"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              required
               style={{
                 width: '100%',
-                backgroundColor: 'var(--red-corporate)',
-                padding: '12px',
-                marginTop: '6px',
-                fontWeight: 700,
-                letterSpacing: '0.02em'
+                padding: '11px 14px',
+                borderRadius: '6px',
+                border: '1px solid #CBD5E1',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
               }}
-            >
-              {isSubmitting ? 'Changing Password...' : 'Change Password'}
-            </button>
-          </form>
-        ) : (
-          /* Standard Single Secure Login Form */
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                Username / Employee ID / Email
-              </label>
-              <input 
-                type="text" 
-                placeholder=""
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-                autoFocus
-                id="login-modal-identifier"
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '14px',
-                  outlineColor: 'var(--red-corporate)'
-                }}
-              />
-            </div>
+            />
+          </div>
 
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#334155' }}>
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{ background: 'none', border: 'none', color: '#64748B', fontSize: '12px', cursor: 'pointer' }}
-                >
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
               <input 
-                type={showPassword ? 'text' : 'password'} 
-                placeholder="••••••••••••"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                id="login-modal-password"
                 style={{
                   width: '100%',
-                  padding: '10px 12px',
+                  padding: '11px 40px 11px 14px',
                   borderRadius: '6px',
                   border: '1px solid #CBD5E1',
                   fontSize: '14px',
-                  outlineColor: 'var(--red-corporate)'
+                  outline: 'none',
+                  boxSizing: 'border-box'
                 }}
               />
-            </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '-2px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#475569', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  checked={rememberMe} 
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  style={{ accentColor: 'var(--red-corporate)' }}
-                />
-                <span>Remember me</span>
-              </label>
-
               <button
                 type="button"
-                onClick={handleForgotPassword}
+                onClick={() => setShowPassword(!showPassword)}
                 style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
                   background: 'none',
                   border: 'none',
-                  color: 'var(--red-corporate)',
-                  fontSize: '12px',
-                  fontWeight: 600,
+                  color: '#64748B',
                   cursor: 'pointer',
-                  textDecoration: 'underline'
+                  fontSize: '12px',
+                  padding: '4px'
                 }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                Forgot Password?
+                {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
+          </div>
 
-            {/* Login Submit CTA */}
-            <button 
-              type="submit"
-              disabled={isSubmitting}
-              className="btn-hero-primary"
-              id="login-modal-submit-btn"
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#475569', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              Remember me
+            </label>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
               style={{
-                width: '100%',
-                backgroundColor: 'var(--red-corporate)',
-                padding: '12px',
-                fontSize: '14.5px',
-                fontWeight: 800,
-                letterSpacing: '0.03em',
-                marginTop: '4px'
+                background: 'none',
+                border: 'none',
+                color: 'var(--red-primary, #8B0021)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                textDecoration: 'underline'
               }}
             >
-              {isSubmitting ? 'Authenticating...' : 'LOGIN'}
+              Forgot password?
             </button>
-          </form>
-        )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              backgroundColor: 'var(--red-primary, #8B0021)',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '12px',
+              fontSize: '14px',
+              fontWeight: 700,
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.7 : 1,
+              marginTop: '6px',
+              transition: 'background-color 0.15s ease'
+            }}
+          >
+            {isSubmitting ? 'Authenticating...' : 'Sign In to Portal'}
+          </button>
+        </form>
       </div>
     </div>
   );

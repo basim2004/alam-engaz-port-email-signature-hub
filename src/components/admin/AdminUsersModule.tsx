@@ -112,9 +112,9 @@ export const AdminUsersModule: React.FC<AdminUsersModuleProps> = ({
       lastLogin: 'Never',
       createdAt: new Date().toISOString().split('T')[0],
       department: formDept,
-      mustChangePassword: true,
-      passwordChangeRequired: true,
-      passwordStatus: 'Temporary',
+      mustChangePassword: false,
+      passwordChangeRequired: false,
+      passwordStatus: 'Set',
       whatsappNumber: formWhatsApp
     };
 

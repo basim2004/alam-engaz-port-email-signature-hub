@@ -30,7 +30,6 @@ const SENSITIVE_URL_PATTERNS = [
   'firebaseinstallations.googleapis.com',
   'apis.google.com',
   '/auth/',
-  'clearbook',
   'credential'
 ];
 

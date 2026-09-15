@@ -8,7 +8,7 @@ import {
 import { logAuditEvent } from './websiteContentService';
 
 /**
- * Generates an executive-grade, readable temporary password.
+ * Generates an executive-grade, readable password.
  * Format: AE@[4-digits]#[year] (e.g., AE@4827#2026)
  */
 export function generateSecureTempPassword(): string {
@@ -34,7 +34,6 @@ export function sanitizeWhatsAppNumber(phone: string): string {
 
 /**
  * Formats the official ALAM ENGAZ WhatsApp message for credential delivery.
- * Requirement #3 exact format.
  */
 export function formatWhatsAppLoginMessage(params: {
   employeeName: string;
@@ -47,7 +46,7 @@ export function formatWhatsAppLoginMessage(params: {
 
   return `Hello ${params.employeeName.toUpperCase()},
 
-Your ALAM ENGAZ Employee Portal account has been created.
+Your ALAM ENGAZ Employee Portal account is ready.
 
 You can now access your personal Employee Portal.
 
@@ -57,10 +56,8 @@ ${url}
 Username / Employee ID:
 ${params.username}
 
-Temporary Password:
+Password:
 ${params.tempPassword || '••••••••'}
-
-Please log in and change your password after your first login.
 
 This portal is your personal ALAM ENGAZ Employee Portal for accessing your profile, official email signature, Signature Studio, installation guides and related tools.
 
@@ -98,7 +95,6 @@ export function openWhatsAppWithCredentials(params: {
 
   const waUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(messageText)}`;
 
-  // Log audit event per requirement #15
   logAuditEvent(
     params.actorName || 'Management',
     (params.actorRole as any) || 'MANAGEMENT',
@@ -121,12 +117,7 @@ export function openWhatsAppWithCredentials(params: {
 
 /**
  * Creates login credentials for an employee.
- * Requirement #2:
- * - Username created
- * - Employee portal access created
- * - Temporary password generated
- * - First-login password change enabled
- * - Never store plaintext password in Firestore
+ * The credentials remain active directly without forced first-login change.
  */
 export async function createEmployeeCredentials(params: {
   employeeId: string;
@@ -147,13 +138,13 @@ export async function createEmployeeCredentials(params: {
   const now = new Date().toISOString();
   const finalWhatsApp = params.whatsappNumber || employee.whatsappNumber || employee.phone;
 
-  // Update employee record
+  // Update employee record — directly active credentials
   employee.username = finalUsername;
   employee.hasLoginAccess = true;
   employee.portalAccessStatus = 'Active';
-  employee.passwordStatus = 'Temporary';
-  employee.mustChangePassword = true;
-  employee.passwordChangeRequired = true;
+  employee.passwordStatus = 'Set';
+  employee.mustChangePassword = false;
+  employee.passwordChangeRequired = false;
   if (params.whatsappNumber) {
     employee.whatsappNumber = params.whatsappNumber;
   }
@@ -161,7 +152,7 @@ export async function createEmployeeCredentials(params: {
 
   await saveFirestoreEmployee(employee);
 
-  // Sync to UserAccounts collection (stores only metadata, never plaintext password)
+  // Sync to UserAccounts collection
   const userAccounts = getFirestoreUserAccounts();
   const existingIdx = userAccounts.findIndex(u =>
     (u.employeeId && u.employeeId.toLowerCase() === employee.id.toLowerCase()) ||
@@ -181,9 +172,9 @@ export async function createEmployeeCredentials(params: {
     createdAt: now.split('T')[0],
     updatedAt: now,
     department: employee.department,
-    mustChangePassword: true,
-    passwordChangeRequired: true,
-    passwordStatus: 'Temporary',
+    mustChangePassword: false,
+    passwordChangeRequired: false,
+    passwordStatus: 'Set',
     whatsappNumber: finalWhatsApp
   };
 
@@ -195,7 +186,6 @@ export async function createEmployeeCredentials(params: {
 
   await saveFirestoreUserAccounts(userAccounts);
 
-  // Requirement #15: Audit log
   await logAuditEvent(
     params.actorName || 'Management',
     (params.actorRole as any) || 'MANAGEMENT',
@@ -213,10 +203,7 @@ export async function createEmployeeCredentials(params: {
 }
 
 /**
- * Resets employee password and generates a temporary password.
- * Requirement #7 & #14:
- * - Temporary password shown only in confirmation dialog
- * - Flagged for mandatory password change
+ * Resets employee password and generates a valid active password.
  */
 export async function resetEmployeeCredentials(params: {
   employeeId: string;
@@ -234,9 +221,9 @@ export async function resetEmployeeCredentials(params: {
 
   employee.hasLoginAccess = true;
   employee.portalAccessStatus = 'Active';
-  employee.passwordStatus = 'Temporary';
-  employee.mustChangePassword = true;
-  employee.passwordChangeRequired = true;
+  employee.passwordStatus = 'Set';
+  employee.mustChangePassword = false;
+  employee.passwordChangeRequired = false;
   employee.updatedAt = now;
 
   await saveFirestoreEmployee(employee);
@@ -245,9 +232,9 @@ export async function resetEmployeeCredentials(params: {
   const userAccounts = getFirestoreUserAccounts();
   const acc = userAccounts.find(u => u.employeeId?.toLowerCase() === employee.id.toLowerCase());
   if (acc) {
-    acc.mustChangePassword = true;
-    acc.passwordChangeRequired = true;
-    acc.passwordStatus = 'Temporary';
+    acc.mustChangePassword = false;
+    acc.passwordChangeRequired = false;
+    acc.passwordStatus = 'Set';
     acc.updatedAt = now;
     await saveFirestoreUserAccounts(userAccounts);
   }
@@ -266,7 +253,7 @@ export async function resetEmployeeCredentials(params: {
     success: true,
     tempPassword: tempPass,
     employee,
-    message: `✓ Temporary password generated for ${employee.name}.`
+    message: `✓ Credentials generated for ${employee.name}.`
   };
 }
 
@@ -316,10 +303,6 @@ export async function toggleEmployeeAccountStatus(params: {
 
 /**
  * Revokes / Deletes employee portal login access without deleting the employee profile.
- * Requirement #11:
- * - "Delete portal access for [NAME]?"
- * - "This will prevent the employee from logging in to the Employee Portal."
- * - Employee record remains in the employee database.
  */
 export async function deleteEmployeePortalAccess(params: {
   employeeId: string;
@@ -359,13 +342,12 @@ export async function deleteEmployeePortalAccess(params: {
   return {
     success: true,
     employee,
-    message: `✓ Portal access removed for ${employee.name}. Profile remains in directory.`
+    message: `✓ Portal access deleted for ${employee.name}. Employee profile retained in database.`
   };
 }
 
 /**
- * Updates employee's WhatsApp number.
- * Requirement #4
+ * Updates WhatsApp Number for an employee.
  */
 export async function updateEmployeeWhatsAppNumber(params: {
   employeeId: string;
@@ -379,27 +361,18 @@ export async function updateEmployeeWhatsAppNumber(params: {
     return { success: false, message: `Employee ID ${params.employeeId} not found.` };
   }
 
+  const now = new Date().toISOString();
   employee.whatsappNumber = params.whatsappNumber;
-  employee.updatedAt = new Date().toISOString();
+  employee.updatedAt = now;
   await saveFirestoreEmployee(employee);
 
-  // Also sync to user accounts
   const userAccounts = getFirestoreUserAccounts();
   const acc = userAccounts.find(u => u.employeeId?.toLowerCase() === employee.id.toLowerCase());
   if (acc) {
     acc.whatsappNumber = params.whatsappNumber;
-    acc.updatedAt = employee.updatedAt;
+    acc.updatedAt = now;
     await saveFirestoreUserAccounts(userAccounts);
   }
-
-  await logAuditEvent(
-    params.actorName || 'Management',
-    (params.actorRole as any) || 'MANAGEMENT',
-    'WhatsApp Number Updated',
-    'Security',
-    employee.email,
-    `Updated WhatsApp number for ${employee.name} to ${params.whatsappNumber}.`
-  );
 
   return {
     success: true,

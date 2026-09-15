@@ -1547,7 +1547,7 @@ export const ManagementPortalView: React.FC<ManagementPortalViewProps> = ({
               {/* Employee Summary Card */}
               <div className="mgmt-emp-header-card">
                 <div className="mgmt-emp-avatar-circle large" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' }}>
-                  <img src="/assets/logo.png" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }} alt="ALAM ENGAZ" style={{ width: '42px', height: 'auto', objectFit: 'contain' }} />
+                  <EmployeeAvatar name={selectedEmployee.name} photoUrl={selectedEmployee.photoUrl} size={54} />
                 </div>
                 <div className="mgmt-emp-header-details">
                   <div className="mgmt-emp-name-badge-row">

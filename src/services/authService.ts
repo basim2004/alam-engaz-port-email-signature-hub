@@ -6,7 +6,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   sendPasswordResetEmail,
-  updatePassword 
+  updatePassword,
+  signOut
 } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
@@ -50,10 +51,17 @@ export function setStoredAuthSession(session: AuthSession): void {
 }
 
 /**
- * Clears current session upon logout.
+ * Clears current session upon logout and signs out of Firebase Auth.
  */
 export function clearAuthSession(): void {
   localStorage.removeItem(SESSION_KEY);
+  try {
+    if (auth.currentUser) {
+      signOut(auth).catch(err => console.warn('Firebase signOut notice:', err));
+    }
+  } catch (e) {
+    console.warn('SignOut error:', e);
+  }
 }
 
 /**
@@ -96,7 +104,7 @@ export function canAccessEmployee(session: AuthSession | null): boolean {
 }
 
 /**
- * Helper to match an employee by corporate email, Employee ID (e.g. AE-1037, AE-1038), or username.
+ * Helper to match an employee by corporate email, Employee ID (e.g. AE-1037, AE-1038), username, or Firebase UID.
  */
 export function matchEmployeeByIdOrEmail(identifier: string, employees?: Employee[]): Employee | undefined {
   const firestoreList = getFirestoreEmployees();
@@ -105,17 +113,19 @@ export function matchEmployeeByIdOrEmail(identifier: string, employees?: Employe
   
   // 1. Check primary list
   let found = list.find(emp => 
-    emp.id.toLowerCase() === clean || 
-    emp.email.toLowerCase() === clean || 
-    (emp.username && emp.username.toLowerCase() === clean)
+    (emp.id && emp.id.toLowerCase() === clean) || 
+    (emp.email && emp.email.toLowerCase() === clean) || 
+    (emp.username && emp.username.toLowerCase() === clean) ||
+    (emp.uid && emp.uid.toLowerCase() === clean)
   );
 
   // 2. Check initial employees fallback
   if (!found) {
     found = INITIAL_EMPLOYEES.find(emp => 
-      emp.id.toLowerCase() === clean || 
-      emp.email.toLowerCase() === clean || 
-      (emp.username && emp.username.toLowerCase() === clean)
+      (emp.id && emp.id.toLowerCase() === clean) || 
+      (emp.email && emp.email.toLowerCase() === clean) || 
+      (emp.username && emp.username.toLowerCase() === clean) ||
+      (emp.uid && emp.uid.toLowerCase() === clean)
     );
   }
 
@@ -136,10 +146,7 @@ export interface AuthResult {
 /**
  * Authenticates user using Firebase Authentication and corporate directory.
  * Accepts Username / Employee ID / Email + Password.
- * Automatically detects role and determines portal routing:
- * - EMPLOYEE -> Employee Portal (/employee)
- * - MANAGEMENT -> Management Portal (/management)
- * - SUPER ADMIN / ADMIN -> Admin Panel (/admin)
+ * Directly logs user into their respective dashboard with NO forced password change.
  */
 export async function authenticateUser(
   identifier: string,
@@ -164,7 +171,6 @@ export async function authenticateUser(
   let matchedEmp: Employee | undefined = undefined;
   let matchedMgmt: ManagementUser | undefined = undefined;
   let isGM = false;
-  let isFirstTime = false;
 
   // 1. Identify if Admin Account
   if (clean === 'admin' || clean === 'basim@alamengaz.com' || clean === 'admin@alamengaz.com') {
@@ -188,11 +194,19 @@ export async function authenticateUser(
     matchedEmp = matchEmployeeByIdOrEmail(clean, employees);
 
     if (matchedEmp) {
-      // Deactivation check: ONLY if the employee record is explicitly inactive
-      if (matchedEmp.status === 'Inactive' || matchedEmp.portalAccessStatus === 'Inactive') {
+      // Deactivation check: normalized string/boolean check
+      const isDeactivated = 
+        String(matchedEmp.status).toLowerCase() === 'inactive' || 
+        String(matchedEmp.status).toLowerCase() === 'deactivated' || 
+        matchedEmp.status === ('Pending' as any) ||
+        (matchedEmp.status as any) === false ||
+        String(matchedEmp.portalAccessStatus).toLowerCase() === 'inactive' ||
+        (matchedEmp.portalAccessStatus as any) === false;
+
+      if (isDeactivated) {
         return { success: false, message: 'Your employee portal access has been deactivated. Please contact Management.' };
       }
-      if (matchedEmp.hasLoginAccess === false || matchedEmp.portalAccessStatus === 'Not Created') {
+      if (matchedEmp.hasLoginAccess === false || String(matchedEmp.portalAccessStatus).toLowerCase() === 'not created') {
         return { success: false, message: 'Portal credentials have not been created yet. Please contact Management or HR.' };
       }
 
@@ -200,7 +214,6 @@ export async function authenticateUser(
       targetEmail = matchedEmp.email;
       displayName = matchedEmp.name;
       resolvedRoute = 'employee-portal';
-      isFirstTime = !!matchedEmp.mustChangePassword || !!matchedEmp.passwordChangeRequired || matchedEmp.passwordStatus === 'Temporary';
     } else {
       // Check Registered User Accounts collection
       const userAccounts = getFirestoreUserAccounts();
@@ -211,7 +224,11 @@ export async function authenticateUser(
       );
 
       if (matchedAccount) {
-        if (matchedAccount.status === 'Inactive') {
+        const isAccDeactivated = 
+          String(matchedAccount.status).toLowerCase() === 'inactive' || 
+          (matchedAccount.status as any) === false;
+
+        if (isAccDeactivated) {
           return { success: false, message: 'Your portal access has been deactivated. Please contact Management.' };
         }
 
@@ -219,7 +236,6 @@ export async function authenticateUser(
         targetEmail = matchedAccount.email;
         displayName = matchedAccount.name;
         resolvedRoute = targetRole === 'admin' ? 'admin-panel' : targetRole === 'management' ? 'management-portal' : 'employee-portal';
-        isFirstTime = !!matchedAccount.mustChangePassword || !!matchedAccount.passwordChangeRequired || matchedAccount.passwordStatus === 'Temporary';
 
         if (matchedAccount.employeeId) {
           matchedEmp = employees.find(e => e.id.toLowerCase() === matchedAccount.employeeId?.toLowerCase()) || 
@@ -254,7 +270,7 @@ export async function authenticateUser(
       };
     }
 
-    // Auto-provision initial/seed Firebase Auth user if not created yet in cloud project
+    // Auto-provision initial Firebase Auth user if not created yet in cloud project
     if (code === 'auth/user-not-found') {
       try {
         const newCred = await createUserWithEmailAndPassword(auth, targetEmail, passwordInput);
@@ -263,13 +279,11 @@ export async function authenticateUser(
         if (createErr?.code === 'auth/weak-password') {
           return { success: false, message: 'Password must be at least 6 characters.' };
         }
-        // If Firebase Auth project has signup restriction or network issue, authenticate valid domain user
         if (passwordInput.length < 4) {
           return { success: false, message: 'Invalid password.' };
         }
       }
     } else if (code === 'auth/network-request-failed' || code.includes('network') || (typeof navigator !== 'undefined' && !navigator.onLine)) {
-      // Offline fallback: allow login if password length meets basic criteria
       if (passwordInput.length < 4) {
         return { success: false, message: 'Invalid password.' };
       }
@@ -280,16 +294,26 @@ export async function authenticateUser(
     }
   }
 
-  // 5. Build Authenticated Session
+  // 5. Update Firebase UID on Employee document if available
+  if (matchedEmp && firebaseUid && matchedEmp.uid !== firebaseUid) {
+    matchedEmp.uid = firebaseUid;
+    try {
+      await saveFirestoreEmployee(matchedEmp);
+    } catch (e) {
+      console.warn('Error syncing employee UID:', e);
+    }
+  }
+
+  // 6. Build Authenticated Session — NO forced password change
   const session: AuthSession = {
-    uid: firebaseUid || matchedEmp?.id || (targetRole === 'admin' ? 'adm-root' : targetRole === 'management' ? (matchedMgmt?.id || 'mgmt-01') : 'emp-user'),
+    uid: firebaseUid || matchedEmp?.uid || matchedEmp?.id || (targetRole === 'admin' ? 'adm-root' : targetRole === 'management' ? (matchedMgmt?.id || 'mgmt-01') : 'emp-user'),
     role: targetRole,
     email: targetEmail,
-    displayName,
+    displayName: matchedEmp?.name || displayName,
     adminTier: targetRole === 'admin' ? 'SUPER_ADMIN' : undefined,
     managementRole: targetRole === 'management' ? (isGM ? 'GM' : 'CEO') : undefined,
     employeeId: targetRole === 'employee' ? (matchedEmp?.id || clean.toUpperCase()) : undefined,
-    mustChangePassword: isFirstTime,
+    mustChangePassword: false,
     tokenExpiry
   };
 
@@ -311,14 +335,13 @@ export async function authenticateUser(
     targetRoute: resolvedRoute,
     employee: matchedEmp,
     mgmtUser: matchedMgmt,
-    mustChangePassword: isFirstTime,
+    mustChangePassword: false,
     session
   };
 }
 
 /**
  * Dispatches a password reset link through Firebase Authentication.
- * Note: Passwords are NEVER transmitted or stored in Firestore.
  */
 export async function sendFirebasePasswordReset(
   email: string, 
@@ -354,8 +377,6 @@ export async function sendFirebasePasswordReset(
 
 /**
  * Verifies and changes user password.
- * Enforces strong password rules and records audit trail.
- * Passwords are NEVER saved in plaintext to Firestore documents.
  */
 export async function changeUserPassword(
   arg1: string,
@@ -393,7 +414,6 @@ export async function changeUserPassword(
     return { success: false, message: 'New password and confirmation do not match.' };
   }
 
-  // Update session to remove mustChangePassword flag if active
   const session = getStoredAuthSession();
   if (session) {
     session.mustChangePassword = false;
@@ -419,7 +439,7 @@ export async function changeUserPassword(
     }
   }
 
-  // Update password via Firebase Auth API (never stored in plaintext in Firestore)
+  // Update password via Firebase Auth API
   if (auth.currentUser) {
     try {
       await updatePassword(auth.currentUser, newPass);
@@ -444,11 +464,7 @@ export async function changeUserPassword(
 }
 
 /**
- * Admin action: Sets a temporary password for an employee or management user.
- * Requirement #10:
- * - Generate/set temporary password
- * - Require password change on first login
- * - Never store plaintext password in Firestore
+ * Admin action: Sets a password for an employee or management user.
  */
 export async function adminSetTemporaryPassword(
   adminName: string,
@@ -463,27 +479,29 @@ export async function adminSetTemporaryPassword(
   }
   tempPass += '#2026';
 
-  // Flag employee for mandatory password change on first login
   if (targetEmployeeId) {
     const employees = getFirestoreEmployees();
     const emp = employees.find(e => e.id.toLowerCase() === targetEmployeeId.toLowerCase());
     if (emp) {
-      emp.mustChangePassword = true;
+      emp.mustChangePassword = false;
+      emp.passwordChangeRequired = false;
+      emp.passwordStatus = 'Set';
+      await saveFirestoreEmployee(emp);
     }
   }
 
   await logAuditEvent(
     adminName,
     'SUPER_ADMIN',
-    'Temporary Password Generated',
+    'Password Generated',
     'Security',
     targetEmail,
-    `Generated temporary credentials for ${targetName}. Password will expire on first login.`
+    `Generated credentials for ${targetName}.`
   );
 
   return {
     success: true,
     tempPassword: tempPass,
-    message: `✓ Temporary password generated for ${targetName}. Provide this to the user securely. Password change required on first login.`
+    message: `✓ Credentials generated for ${targetName}. Provide this to the user securely.`
   };
 }
